@@ -1,0 +1,79 @@
+name: IS UP CHECKER 
+
+on:
+  workflow_dispatch:
+    inputs:
+      python_script_url:
+        description: 'URL to Python scanner script'
+        required: true
+        default: 'https://raw.githubusercontent.com/yourusername/yourrepo/main/ip_scanner.py'
+        type: string
+      ip_list_url:
+        description: 'URL to IP list file'
+        required: true
+        default: 'https://raw.githubusercontent.com/yourusername/yourrepo/main/ip_list.txt'
+        type: string
+      service_to_scan:
+        description: 'Service to verify'
+        required: true
+        default: 'ssh'
+        type: choice
+        options: ['ssh', 'rdp']
+      scan_timeout:
+        description: 'Timeout per IP (seconds)'
+        required: false
+        default: '2'
+        type: string
+
+jobs:
+  scan-ips:
+    name: Scan and Verify IPs
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install required tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y masscan nmap curl python3 python3-pip
+        pip3 install requests
+
+    - name: Download files
+      run: |
+        echo "Downloading Python scanner script..."
+        curl -s -o ip_scanner.py "${{ github.event.inputs.python_script_url }}"
+        
+        echo "Downloading IP list..."
+        curl -s -o ip_list.txt "${{ github.event.inputs.ip_list_url }}"
+        
+        echo "Files downloaded:"
+        ls -la ip_scanner.py ip_list.txt
+        echo "IP count: $(wc -l < ip_list.txt)"
+
+    - name: Run IS UP CHECKER
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        python3 ip_scanner.py \
+          --service ${{ github.event.inputs.service_to_scan }} \
+          --ip-list ip_list.txt \
+          --timeout ${{ github.event.inputs.scan_timeout }} \
+          --bot-token "$TELEGRAM_BOT_TOKEN" \
+          --chat-id "$TELEGRAM_CHAT_ID"
+
+    - name: Upload results
+      uses: actions/upload-artifact@v4
+      with:
+        name: scan-results
+        path: |
+          up_ips.txt
+          scan_results.json
+        retention-days: 1
+
+    - name: Cleanup
+      run: |
+        echo "Scan completed at $(date)"
+        echo "Results saved to artifacts"
