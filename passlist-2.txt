@@ -126,7 +126,6 @@ Decryptionfailed.
 tarun2005
 Lowin@2021#
 baneba77
-//accounts.google.com/o/oauth2/v2/auth?client_id=657244275796-gp99t8e5bu9bu6aahvg0krc03cli13ud.apps.googleusercontent.com&scope=openid%20email&redirect_uri=https
 18012908FM1+1!
 95Qkp3L/Kjd&fTr
 ahmadsef12
@@ -1393,7 +1392,6 @@ Ash@9740
 0914972772
 **Jeanette91**
 Kthp12345.
-//accounts.google.com/o/oauth2/v2/auth?client_id=657244275796-gp99t8e5bu9bu6aahvg0krc03cli13ud.apps.googleusercontent.com&scope=openid%20email&redirect_uri=https
 sai22chinna.
 OOss@#$2002
 bhargav003
