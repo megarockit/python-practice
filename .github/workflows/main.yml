@@ -159,7 +159,9 @@ jobs:
           ${{ github.event.inputs.service_type }} \
           $CHUNK_FILE \
           "${{ github.event.inputs.username }}" \
-          passwords.txt
+          passwords.txt \
+          ${{ secrets.TELEGRAM_BOT_TOKEN }} \
+          ${{ secrets.TELEGRAM_CHAT_ID }}
 
     - name: Upload results
       if: env.SKIP_RUNNER != 'true'
